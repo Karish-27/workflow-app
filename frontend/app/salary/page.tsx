@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -9,7 +9,7 @@ import { workersApi, salaryApi, paymentsApi } from '../../lib/api';
 import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from '../../lib/utils';
 import { Worker, SalaryBreakdown } from '../../types';
 
-export default function SalaryPage() {
+function SalaryContent() {
   const searchParams = useSearchParams();
   const qc = useQueryClient();
   const now = new Date();
@@ -237,5 +237,13 @@ export default function SalaryPage() {
         )}
       </Modal>
     </AppShell>
+  );
+}
+
+export default function SalaryPage() {
+  return (
+    <Suspense>
+      <SalaryContent />
+    </Suspense>
   );
 }
