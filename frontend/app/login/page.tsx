@@ -8,8 +8,9 @@ import { useAuthStore } from '../../lib/store';
 export default function LoginPage() {
   const router = useRouter();
   const { login, isAuthenticated } = useAuthStore();
-  const [form, setForm] = useState({ email: 'demo@workflow.com', password: 'demo1234' });
+  const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) router.replace('/dashboard');
@@ -50,11 +51,6 @@ export default function LoginPage() {
           <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 24, fontWeight: 800, marginBottom: 8 }}>Welcome back</h1>
           <p style={{ fontSize: 14, color: '#6B6B6B', marginBottom: 24 }}>Sign in to manage your workers</p>
 
-          {/* Demo hint */}
-          <div style={{ background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 12, color: '#92400E' }}>
-            <strong>Demo:</strong> demo@workflow.com / demo1234
-          </div>
-
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label className="form-label">Email Address</label>
@@ -69,14 +65,24 @@ export default function LoginPage() {
             </div>
             <div className="form-group">
               <label className="form-label">Password</label>
-              <input
-                className="form-input"
-                type="password"
-                value={form.password}
-                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                placeholder="Enter your password"
-                required
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="form-input"
+                  type={showPassword ? 'text' : 'password'}
+                  value={form.password}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  placeholder="Enter your password"
+                  style={{ paddingRight: 40 }}
+                  required
+                />
+                <button type="button" onClick={() => setShowPassword(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#6B6B6B' }}>
+                  {showPassword ? (
+                    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  ) : (
+                    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  )}
+                </button>
+              </div>
             </div>
             <button className="btn btn-primary" type="submit" disabled={loading} style={{ width: '100%', justifyContent: 'center', padding: '12px 18px', fontSize: 15, marginTop: 4 }}>
               {loading ? <><span className="spinner" />Signing in...</> : 'Sign In'}

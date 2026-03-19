@@ -1,6 +1,7 @@
 const express = require('express');
 const Worker = require('../models/Worker');
 const Attendance = require('../models/Attendance');
+const Payment = require('../models/Payment');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
@@ -76,6 +77,18 @@ router.get('/:workerId', async (req, res) => {
 
     const breakdown = calculateSalary(worker, records, daysInMonth);
 
+    const payment = await Payment.findOne({
+      worker: worker._id,
+      owner: req.user._id,
+      periodStart: { $gte: start },
+      periodEnd: { $lte: end },
+      status: 'paid',
+    });
+
+    breakdown.isPaid = !!payment;
+    breakdown.paidAmount = payment ? payment.netAmount : 0;
+    breakdown.paymentMethod = payment ? payment.paymentMethod : null;
+
     res.json({ success: true, breakdown, records, period: { month: m, year: y, start, end } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -99,12 +112,23 @@ router.get('/summary/all', async (req, res) => {
       date: { $gte: start, $lte: end },
     });
 
-    const summaries = workers.map((w) => {
-      const workerRecords = allRecords.filter((r) => r.worker.toString() === w._id.toString());
-      return calculateSalary(w, workerRecords, daysInMonth);
+    const allPayments = await Payment.find({
+      owner: req.user._id,
+      periodStart: { $gte: start },
+      periodEnd: { $lte: end },
+      status: 'paid',
     });
 
-    const totalPayable = summaries.reduce((acc, s) => acc + s.netAmount, 0);
+    const summaries = workers.map((w) => {
+      const workerRecords = allRecords.filter((r) => r.worker.toString() === w._id.toString());
+      const breakdown = calculateSalary(w, workerRecords, daysInMonth);
+      const payment = allPayments.find((p) => p.worker.toString() === w._id.toString());
+      breakdown.isPaid = !!payment;
+      breakdown.paidAmount = payment ? payment.netAmount : 0;
+      return breakdown;
+    });
+
+    const totalPayable = summaries.filter(s => !s.isPaid).reduce((acc, s) => acc + s.netAmount, 0);
 
     res.json({
       success: true,

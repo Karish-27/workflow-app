@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import AppShell from '../../components/layout/AppShell';
 import { Avatar, Modal, PageHeader, StatCard } from '../../components/ui';
 import { workersApi, salaryApi, paymentsApi } from '../../lib/api';
-import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from '../../lib/utils';
+import { formatCurrency } from '../../lib/utils';
 import { Worker, SalaryBreakdown } from '../../types';
 
 function SalaryContent() {
@@ -20,7 +20,7 @@ function SalaryContent() {
   const [payModal, setPayModal] = useState(false);
   const [payMethod, setPayMethod] = useState<'cash' | 'bank_transfer' | 'upi' | 'cheque'>('cash');
   const [payNote, setPayNote] = useState('');
-  const [advance, setAdvance] = useState(0);
+  const [customAmount, setCustomAmount] = useState<string>('');
 
   const { data: workersData } = useQuery({
     queryKey: ['workers-active'],
@@ -48,7 +48,11 @@ function SalaryContent() {
     onSuccess: () => {
       toast.success('Payment recorded!');
       setPayModal(false);
+      setCustomAmount('');
+      setPayNote('');
       qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['salary'] });
+      qc.invalidateQueries({ queryKey: ['salary-summary'] });
     },
     onError: (e: any) => toast.error(e.response?.data?.message || 'Payment failed'),
   });
@@ -56,9 +60,15 @@ function SalaryContent() {
   const breakdown: SalaryBreakdown | null = salaryData?.breakdown || null;
   const period = salaryData?.period;
 
+  const openPayModal = () => {
+    if (breakdown) setCustomAmount(String(breakdown.netAmount));
+    setPayModal(true);
+  };
+
   const handlePay = () => {
     if (!breakdown || !period) return;
-    const finalNet = Math.max(0, breakdown.netAmount - advance);
+    const finalNet = customAmount !== '' ? +customAmount : breakdown.netAmount;
+    if (isNaN(finalNet) || finalNet < 0) { toast.error('Enter a valid amount'); return; }
     payMut.mutate({
       workerId: selectedWorker,
       periodStart: period.start,
@@ -71,7 +81,7 @@ function SalaryContent() {
       overtimeHours: breakdown.overtimeHours,
       grossAmount: breakdown.grossAmount,
       deductions: breakdown.deductions,
-      advance,
+      advance: 0,
       netAmount: finalNet,
       paymentMethod: payMethod,
       notes: payNote,
@@ -122,9 +132,23 @@ function SalaryContent() {
                     <td><span className="badge badge-red">{s.absentDays}</span></td>
                     <td><span className="badge badge-yellow">{s.halfDays}</span></td>
                     <td style={{ color: '#EF4444' }}>−{formatCurrency(s.deductions)}</td>
-                    <td><span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, color: '#10B981', fontSize: 14 }}>{formatCurrency(s.netAmount)}</span></td>
                     <td>
-                      <button className="btn btn-primary btn-xs" onClick={() => { setSelectedWorker(s.worker._id); setPayModal(true); }}>Pay</button>
+                      {(s as any).isPaid ? (
+                        <div>
+                          <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, color: '#10B981', fontSize: 14 }}>{formatCurrency((s as any).paidAmount)}</span>
+                          <span style={{ fontSize: 11, color: '#6B6B6B', marginLeft: 4 }}>paid</span>
+                        </div>
+                      ) : (
+                        <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, color: '#10B981', fontSize: 14 }}>{formatCurrency(s.netAmount)}</span>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {(s as any).isPaid && <span className="badge badge-green">Paid</span>}
+                        <button className="btn btn-primary btn-xs" onClick={() => { setSelectedWorker(s.worker._id); setCustomAmount(''); setPayModal(true); }}>
+                          {(s as any).isPaid ? 'Pay More' : 'Pay'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )) || <tr><td colSpan={9} style={{ textAlign: 'center', color: '#6B6B6B', padding: 24 }}>No data</td></tr>}
@@ -141,9 +165,20 @@ function SalaryContent() {
                 Detailed Breakdown {breakdown ? `— ${breakdown.worker.name}` : ''}
               </h3>
               {breakdown && (
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button className="btn btn-green btn-sm" onClick={() => setPayModal(true)}>✓ Mark as Paid</button>
-                  <button className="btn btn-primary btn-sm" onClick={() => setPayModal(true)}>Pay Now</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {(breakdown as any).isPaid && (
+                    <div style={{ textAlign: 'right' }}>
+                      <span className="badge badge-green" style={{ fontSize: 13, padding: '5px 12px' }}>✓ Paid {formatCurrency((breakdown as any).paidAmount)}</span>
+                    </div>
+                  )}
+                  {(breakdown as any).isPaid ? (
+                    <button className="btn btn-primary btn-sm" onClick={() => { setCustomAmount(''); setPayModal(true); }}>+ Pay More</button>
+                  ) : (
+                    <>
+                      <button className="btn btn-green btn-sm" onClick={openPayModal}>✓ Mark as Paid</button>
+                      <button className="btn btn-primary btn-sm" onClick={openPayModal}>Pay Now</button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -188,6 +223,12 @@ function SalaryContent() {
                     <span style={{ fontFamily: "'Syne',sans-serif", fontSize: 17, fontWeight: 800 }}>Net Payable</span>
                     <span style={{ fontFamily: "'Syne',sans-serif", fontSize: 26, fontWeight: 800, color: '#FF5C3A' }}>{formatCurrency(breakdown.netAmount)}</span>
                   </div>
+                  {(breakdown as any).isPaid && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginTop: 4, borderTop: '1px solid #E5E0D8' }}>
+                      <span style={{ fontFamily: "'Syne',sans-serif", fontSize: 15, fontWeight: 700, color: '#10B981' }}>Amount Paid</span>
+                      <span style={{ fontFamily: "'Syne',sans-serif", fontSize: 22, fontWeight: 800, color: '#10B981' }}>{formatCurrency((breakdown as any).paidAmount)}</span>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -207,9 +248,26 @@ function SalaryContent() {
               <div style={{ fontSize: 12, color: '#6B6B6B', marginBottom: 4 }}>Paying to</div>
               <div style={{ fontFamily: "'Syne',sans-serif", fontSize: 18, fontWeight: 800 }}>{breakdown.worker.name}</div>
               <div style={{ fontSize: 12, color: '#6B6B6B' }}>{breakdown.worker.role} · {months[month-1]} {year}</div>
-              <div style={{ fontFamily: "'Syne',sans-serif", fontSize: 30, fontWeight: 800, color: '#10B981', marginTop: 8 }}>
-                {formatCurrency(Math.max(0, breakdown.netAmount - advance))}
+              <div style={{ fontSize: 12, color: '#6B6B6B', marginTop: 6 }}>
+                Calculated net pay: <strong style={{ color: '#1A1A1A' }}>{formatCurrency(breakdown.netAmount)}</strong>
               </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Amount to Pay (₹)</label>
+              <input
+                className="form-input"
+                type="text"
+                inputMode="decimal"
+                value={customAmount}
+                placeholder={String(breakdown.netAmount)}
+                onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ''); setCustomAmount(v); }}
+                style={{ fontSize: 18, fontWeight: 700, color: '#10B981' }}
+              />
+              {customAmount !== '' && +customAmount > breakdown.netAmount && (
+                <div style={{ fontSize: 12, color: '#F59E0B', marginTop: 4 }}>
+                  ₹{(+customAmount - breakdown.netAmount).toFixed(2)} extra over calculated amount
+                </div>
+              )}
             </div>
             <div className="form-group">
               <label className="form-label">Payment Method</label>
@@ -219,10 +277,6 @@ function SalaryContent() {
                 <option value="upi">UPI</option>
                 <option value="cheque">Cheque</option>
               </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Advance Deduction (₹)</label>
-              <input className="form-input" type="number" min={0} max={breakdown.netAmount} value={advance} onChange={e => setAdvance(+e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Notes (Optional)</label>
