@@ -32,19 +32,19 @@ export default function WorkersPage() {
 
   const createMut = useMutation({
     mutationFn: (d: WorkerFormData) => workersApi.create(d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workers'] }); toast.success('Worker added!'); setShowModal(false); },
+    onSuccess: () => { qc.refetchQueries({ queryKey: ['workers'] }); toast.success('Worker added!'); setShowModal(false); },
     onError: (e: any) => toast.error(e.response?.data?.message || 'Failed'),
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: string; data: WorkerFormData }) => workersApi.update(id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workers'] }); toast.success('Worker updated!'); setShowModal(false); setEditWorker(null); },
+    onSuccess: () => { qc.refetchQueries({ queryKey: ['workers'] }); toast.success('Worker updated!'); setShowModal(false); setEditWorker(null); },
     onError: (e: any) => toast.error(e.response?.data?.message || 'Failed'),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => workersApi.delete(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['workers'] }); toast.success('Worker deleted'); setDeleteId(null); },
+    onSuccess: () => { qc.refetchQueries({ queryKey: ['workers'] }); toast.success('Worker deleted'); setDeleteId(null); },
   });
 
   const openAdd = () => { setForm(EMPTY_FORM); setEditWorker(null); setShowModal(true); };
