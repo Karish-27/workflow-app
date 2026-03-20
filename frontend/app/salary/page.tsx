@@ -1,6 +1,6 @@
 'use client';
 export const dynamic = 'force-dynamic';
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -28,9 +28,6 @@ function SalaryContent() {
   });
   const workers: Worker[] = workersData?.workers || [];
 
-  useEffect(() => {
-    if (!selectedWorker && workers.length > 0) setSelectedWorker(workers[0]._id);
-  }, [workers]);
 
   const { data: salaryData, isLoading } = useQuery({
     queryKey: ['salary', selectedWorker, month, year],
@@ -119,7 +116,7 @@ function SalaryContent() {
               </thead>
               <tbody>
                 {summaryData?.summaries?.map((s: SalaryBreakdown, i: number) => (
-                  <tr key={s.worker._id} style={{ background: selectedWorker === s.worker._id ? '#FFF8F5' : undefined }}>
+                  <tr key={s.worker._id} style={{ background: selectedWorker === s.worker._id ? '#FFF8F5' : undefined, cursor: 'pointer' }} onClick={() => setSelectedWorker(s.worker._id)}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Avatar name={s.worker.name} size={28} index={i} />

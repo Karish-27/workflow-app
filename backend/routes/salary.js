@@ -77,7 +77,7 @@ router.get('/:workerId', async (req, res) => {
 
     const breakdown = calculateSalary(worker, records, daysInMonth);
 
-    const payment = await Payment.findOne({
+    const payments = await Payment.find({
       worker: worker._id,
       owner: req.user._id,
       periodStart: { $gte: start },
@@ -85,9 +85,10 @@ router.get('/:workerId', async (req, res) => {
       status: 'paid',
     });
 
-    breakdown.isPaid = !!payment;
-    breakdown.paidAmount = payment ? payment.netAmount : 0;
-    breakdown.paymentMethod = payment ? payment.paymentMethod : null;
+    const totalPaid = payments.reduce((acc, p) => acc + p.netAmount, 0);
+    breakdown.isPaid = payments.length > 0;
+    breakdown.paidAmount = Math.round(totalPaid * 100) / 100;
+    breakdown.paymentMethod = payments.length > 0 ? payments[payments.length - 1].paymentMethod : null;
 
     res.json({ success: true, breakdown, records, period: { month: m, year: y, start, end } });
   } catch (err) {
@@ -122,9 +123,10 @@ router.get('/summary/all', async (req, res) => {
     const summaries = workers.map((w) => {
       const workerRecords = allRecords.filter((r) => r.worker.toString() === w._id.toString());
       const breakdown = calculateSalary(w, workerRecords, daysInMonth);
-      const payment = allPayments.find((p) => p.worker.toString() === w._id.toString());
-      breakdown.isPaid = !!payment;
-      breakdown.paidAmount = payment ? payment.netAmount : 0;
+      const workerPayments = allPayments.filter((p) => p.worker.toString() === w._id.toString());
+      const totalPaid = workerPayments.reduce((acc, p) => acc + p.netAmount, 0);
+      breakdown.isPaid = workerPayments.length > 0;
+      breakdown.paidAmount = Math.round(totalPaid * 100) / 100;
       return breakdown;
     });
 

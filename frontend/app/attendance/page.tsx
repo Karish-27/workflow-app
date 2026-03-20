@@ -1,12 +1,12 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, getDaysInMonth } from 'date-fns';
 import toast from 'react-hot-toast';
 import AppShell from '../../components/layout/AppShell';
-import { Avatar, PageHeader, AttendanceDot } from '../../components/ui';
+import { Avatar, PageHeader } from '../../components/ui';
 import { workersApi, attendanceApi } from '../../lib/api';
-import { ATTENDANCE_CONFIG, ATT_CYCLE, nextStatus, formatCurrency } from '../../lib/utils';
+import { ATTENDANCE_CONFIG, nextStatus, formatCurrency } from '../../lib/utils';
 import { AttendanceStatus, Worker } from '../../types';
 
 export default function AttendancePage() {
@@ -66,6 +66,8 @@ export default function AttendancePage() {
       await Promise.all(ops);
       setPendingChanges({});
       refetch();
+      qc.refetchQueries({ queryKey: ['salary'] });
+      qc.refetchQueries({ queryKey: ['salary-summary'] });
       toast.success(`Saved ${ops.length} attendance records`);
     } catch { toast.error('Failed to save'); }
     finally { setSaving(false); }
