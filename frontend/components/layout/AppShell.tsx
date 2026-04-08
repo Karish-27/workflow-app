@@ -9,6 +9,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, loadUser } = useAuthStore();
 
   useEffect(() => {
+    if (isAuthenticated) return;
     loadUser().then(() => {
       if (!useAuthStore.getState().isAuthenticated) router.replace('/login');
     });
