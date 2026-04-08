@@ -19,7 +19,7 @@ const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
   .split(',')
   .map((u) => u.trim());
 
-app.use(cors({
+const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -28,7 +28,10 @@ app.use(cors({
     }
   },
   credentials: true,
-}));
+};
+
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
