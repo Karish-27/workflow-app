@@ -17,7 +17,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   register: async (data: RegisterData) => {
-    await authApi.register(data);
+    const res = await authApi.register(data);
+    const { token, user } = res.data;
+    localStorage.setItem('wf_token', token);
+    localStorage.setItem('wf_user', JSON.stringify(user));
+    set({ token, user, isAuthenticated: true });
   },
 
   logout: () => {
