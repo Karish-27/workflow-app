@@ -5,7 +5,7 @@ import { format, getDaysInMonth } from 'date-fns';
 import toast from 'react-hot-toast';
 import AppShell from '../../components/layout/AppShell';
 import { Avatar, PageHeader } from '../../components/ui';
-import { workersApi, attendanceApi } from '../../lib/api';
+import { workersApi, attendanceApi, exportsApi } from '../../lib/api';
 import { ATTENDANCE_CONFIG, nextStatus, formatCurrency } from '../../lib/utils';
 import { AttendanceStatus, Worker } from '../../types';
 
@@ -121,6 +121,7 @@ export default function AttendancePage() {
           <select className="form-input" style={{ width: 'auto', padding: '8px 12px', fontSize: 13 }} value={year} onChange={e => setYear(+e.target.value)}>
             {[2024, 2025, 2026].map(y => <option key={y}>{y}</option>)}
           </select>
+          <button className="btn btn-ghost btn-sm" onClick={() => exportsApi.attendance(month, year)}>Export CSV</button>
           <button className="btn btn-ghost btn-sm" onClick={markAllPresent}>Mark All Present</button>
           {hasPending && (
             <button className="btn btn-green btn-sm" onClick={saveAll} disabled={saving}>

@@ -12,6 +12,17 @@ const paymentSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    organization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      required: true,
+      index: true,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     // Period covered
     periodStart: {
       type: Date,
@@ -90,11 +101,13 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    deletedAt: { type: Date, default: null, index: true },
   },
   { timestamps: true }
 );
 
 paymentSchema.index({ owner: 1, paymentDate: -1 });
 paymentSchema.index({ worker: 1, paymentDate: -1 });
+paymentSchema.index({ organization: 1, paymentDate: -1 });
 
 module.exports = mongoose.model('Payment', paymentSchema);

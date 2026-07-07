@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { hasPermission } = require('../utils/permissions');
 
 const protect = async (req, res, next) => {
   try {
@@ -16,10 +17,17 @@ const protect = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await User.findById(decoded.id);
-    if (!user) {
+    if (!user || user.deletedAt) {
       return res.status(401).json({
         success: false,
         message: 'User not found.',
+      });
+    }
+
+    if (!user.organization) {
+      return res.status(403).json({
+        success: false,
+        message: 'No organization assigned to this account.',
       });
     }
 
@@ -33,7 +41,6 @@ const protect = async (req, res, next) => {
   }
 };
 
-// Restrict to admin role only
 const adminOnly = (req, res, next) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({
@@ -44,4 +51,25 @@ const adminOnly = (req, res, next) => {
   next();
 };
 
-module.exports = { protect, adminOnly };
+const requirePermission = (permission) => (req, res, next) => {
+  if (!hasPermission(req.user.role, permission)) {
+    return res.status(403).json({
+      success: false,
+      message: `Access denied. Missing permission: ${permission}`,
+    });
+  }
+  next();
+};
+
+const requireVerifiedEmail = (req, res, next) => {
+  if (!req.user.emailVerified) {
+    return res.status(403).json({
+      success: false,
+      message: 'Please verify your email before continuing.',
+      code: 'EMAIL_NOT_VERIFIED',
+    });
+  }
+  next();
+};
+
+module.exports = { protect, adminOnly, requirePermission, requireVerifiedEmail };

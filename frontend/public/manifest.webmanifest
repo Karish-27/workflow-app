@@ -1,0 +1,19 @@
+{
+  "name": "WorkFlow Worker Portal",
+  "short_name": "WorkFlow",
+  "description": "Self-service attendance, payslips and leaves.",
+  "start_url": "/worker-portal",
+  "scope": "/worker-portal",
+  "display": "standalone",
+  "background_color": "#1A1A1A",
+  "theme_color": "#FF5C3A",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

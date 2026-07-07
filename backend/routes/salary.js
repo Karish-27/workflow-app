@@ -2,12 +2,11 @@ const express = require('express');
 const Worker = require('../models/Worker');
 const Attendance = require('../models/Attendance');
 const Payment = require('../models/Payment');
-const { protect } = require('../middleware/auth');
+const { protect, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(protect);
 
-// Helper: calculate salary from attendance records
 function calculateSalary(worker, records, totalWorkingDays) {
   const presentDays = records.filter((r) => r.status === 'present').length;
   const absentDays = records.filter((r) => r.status === 'absent').length;
@@ -22,7 +21,6 @@ function calculateSalary(worker, records, totalWorkingDays) {
     dailyRate = worker.wage;
     grossAmount = (presentDays + halfDays * 0.5) * dailyRate;
   } else {
-    // Monthly: prorate based on working days
     dailyRate = totalWorkingDays > 0 ? worker.wage / totalWorkingDays : 0;
     grossAmount = (presentDays + halfDays * 0.5) * dailyRate;
   }
@@ -54,24 +52,26 @@ function calculateSalary(worker, records, totalWorkingDays) {
 }
 
 // ─── GET /api/salary/:workerId?month=3&year=2026 ──────────────────
-router.get('/:workerId', async (req, res) => {
+router.get('/:workerId', requirePermission('salary.read'), async (req, res) => {
   try {
     const { month, year } = req.query;
     const m = parseInt(month) || new Date().getMonth() + 1;
     const y = parseInt(year) || new Date().getFullYear();
 
-    const worker = await Worker.findOne({ _id: req.params.workerId, owner: req.user._id });
+    const worker = await Worker.findOne({
+      _id: req.params.workerId,
+      organization: req.user.organization,
+      deletedAt: null,
+    });
     if (!worker) return res.status(404).json({ success: false, message: 'Worker not found.' });
 
     const start = new Date(y, m - 1, 1);
     const end = new Date(y, m, 0, 23, 59, 59);
-
-    // Total calendar days in month minus Sundays (approx working days)
     const daysInMonth = new Date(y, m, 0).getDate();
 
     const records = await Attendance.find({
       worker: worker._id,
-      owner: req.user._id,
+      organization: req.user.organization,
       date: { $gte: start, $lte: end },
     });
 
@@ -79,7 +79,8 @@ router.get('/:workerId', async (req, res) => {
 
     const payments = await Payment.find({
       worker: worker._id,
-      owner: req.user._id,
+      organization: req.user.organization,
+      deletedAt: null,
       periodStart: { $gte: start },
       periodEnd: { $lte: end },
       status: 'paid',
@@ -97,7 +98,7 @@ router.get('/:workerId', async (req, res) => {
 });
 
 // ─── GET /api/salary/summary/all?month=3&year=2026 ────────────────
-router.get('/summary/all', async (req, res) => {
+router.get('/summary/all', requirePermission('salary.read'), async (req, res) => {
   try {
     const { month, year } = req.query;
     const m = parseInt(month) || new Date().getMonth() + 1;
@@ -107,14 +108,19 @@ router.get('/summary/all', async (req, res) => {
     const end = new Date(y, m, 0, 23, 59, 59);
     const daysInMonth = new Date(y, m, 0).getDate();
 
-    const workers = await Worker.find({ owner: req.user._id, status: 'active' });
+    const workers = await Worker.find({
+      organization: req.user.organization,
+      deletedAt: null,
+      status: 'active',
+    });
     const allRecords = await Attendance.find({
-      owner: req.user._id,
+      organization: req.user.organization,
       date: { $gte: start, $lte: end },
     });
 
     const allPayments = await Payment.find({
-      owner: req.user._id,
+      organization: req.user.organization,
+      deletedAt: null,
       periodStart: { $gte: start },
       periodEnd: { $lte: end },
       status: 'paid',
@@ -130,7 +136,7 @@ router.get('/summary/all', async (req, res) => {
       return breakdown;
     });
 
-    const totalPayable = summaries.filter(s => !s.isPaid).reduce((acc, s) => acc + s.netAmount, 0);
+    const totalPayable = summaries.filter((s) => !s.isPaid).reduce((acc, s) => acc + s.netAmount, 0);
 
     res.json({
       success: true,
