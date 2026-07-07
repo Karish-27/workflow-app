@@ -2,13 +2,14 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Attendance = require('../models/Attendance');
 const Worker = require('../models/Worker');
-const { protect } = require('../middleware/auth');
+const { protect, requirePermission } = require('../middleware/auth');
+const { recordAudit } = require('../utils/audit');
 
 const router = express.Router();
 router.use(protect);
 
 // ─── GET /api/attendance?month=3&year=2026 ────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', requirePermission('attendance.read'), async (req, res) => {
   try {
     const { month, year, workerId } = req.query;
     const m = parseInt(month) || new Date().getMonth() + 1;
@@ -17,7 +18,7 @@ router.get('/', async (req, res) => {
     const start = new Date(y, m - 1, 1);
     const end = new Date(y, m, 0, 23, 59, 59);
 
-    const filter = { owner: req.user._id, date: { $gte: start, $lte: end } };
+    const filter = { organization: req.user.organization, date: { $gte: start, $lte: end } };
     if (workerId) filter.worker = workerId;
 
     const records = await Attendance.find(filter)
@@ -31,9 +32,9 @@ router.get('/', async (req, res) => {
 });
 
 // ─── POST /api/attendance ─────────────────────────────────────────
-// Mark single worker attendance
 router.post(
   '/',
+  requirePermission('attendance.write'),
   [
     body('workerId').notEmpty().withMessage('Worker ID required'),
     body('date').isISO8601().withMessage('Valid date required'),
@@ -46,8 +47,11 @@ router.post(
     try {
       const { workerId, date, status, overtimeHours, notes } = req.body;
 
-      // Verify worker belongs to this owner
-      const worker = await Worker.findOne({ _id: workerId, owner: req.user._id });
+      const worker = await Worker.findOne({
+        _id: workerId,
+        organization: req.user.organization,
+        deletedAt: null,
+      });
       if (!worker) return res.status(404).json({ success: false, message: 'Worker not found.' });
 
       const dateObj = new Date(date);
@@ -58,6 +62,7 @@ router.post(
         {
           worker: workerId,
           owner: req.user._id,
+          organization: req.user.organization,
           date: dateObj,
           status,
           overtimeHours: overtimeHours || 0,
@@ -67,6 +72,13 @@ router.post(
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
 
+      await recordAudit(req, {
+        action: 'attendance.mark',
+        resource: 'Attendance',
+        resourceId: record._id,
+        metadata: { worker: workerId, status, date: dateObj },
+      });
+
       res.json({ success: true, record });
     } catch (err) {
       res.status(500).json({ success: false, message: err.message });
@@ -75,11 +87,9 @@ router.post(
 );
 
 // ─── POST /api/attendance/bulk ────────────────────────────────────
-// Mark attendance for multiple workers on one date
-router.post('/bulk', async (req, res) => {
+router.post('/bulk', requirePermission('attendance.write'), async (req, res) => {
   try {
     const { date, records } = req.body;
-    // records: [{ workerId, status, overtimeHours }]
 
     if (!date || !Array.isArray(records)) {
       return res.status(400).json({ success: false, message: 'date and records array required.' });
@@ -88,9 +98,12 @@ router.post('/bulk', async (req, res) => {
     const dateObj = new Date(date);
     dateObj.setHours(0, 0, 0, 0);
 
-    // Validate all workers belong to owner
     const workerIds = records.map((r) => r.workerId);
-    const workers = await Worker.find({ _id: { $in: workerIds }, owner: req.user._id });
+    const workers = await Worker.find({
+      _id: { $in: workerIds },
+      organization: req.user.organization,
+      deletedAt: null,
+    });
     if (workers.length !== workerIds.length) {
       return res.status(400).json({ success: false, message: 'Some workers not found.' });
     }
@@ -102,6 +115,7 @@ router.post('/bulk', async (req, res) => {
           $set: {
             worker: r.workerId,
             owner: req.user._id,
+            organization: req.user.organization,
             date: dateObj,
             status: r.status,
             overtimeHours: r.overtimeHours || 0,
@@ -114,6 +128,13 @@ router.post('/bulk', async (req, res) => {
     }));
 
     await Attendance.bulkWrite(ops);
+
+    await recordAudit(req, {
+      action: 'attendance.bulk_mark',
+      resource: 'Attendance',
+      metadata: { count: records.length, date: dateObj },
+    });
+
     res.json({ success: true, message: `${records.length} records saved.` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -121,7 +142,7 @@ router.post('/bulk', async (req, res) => {
 });
 
 // ─── GET /api/attendance/today ────────────────────────────────────
-router.get('/today', async (req, res) => {
+router.get('/today', requirePermission('attendance.read'), async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -129,7 +150,7 @@ router.get('/today', async (req, res) => {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const records = await Attendance.find({
-      owner: req.user._id,
+      organization: req.user.organization,
       date: { $gte: today, $lt: tomorrow },
     }).populate('worker', 'name role');
 
@@ -140,9 +161,20 @@ router.get('/today', async (req, res) => {
 });
 
 // ─── DELETE /api/attendance/:id ───────────────────────────────────
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requirePermission('attendance.write'), async (req, res) => {
   try {
-    await Attendance.findOneAndDelete({ _id: req.params.id, owner: req.user._id });
+    const deleted = await Attendance.findOneAndDelete({
+      _id: req.params.id,
+      organization: req.user.organization,
+    });
+    if (!deleted) return res.status(404).json({ success: false, message: 'Record not found.' });
+
+    await recordAudit(req, {
+      action: 'attendance.delete',
+      resource: 'Attendance',
+      resourceId: req.params.id,
+    });
+
     res.json({ success: true, message: 'Record deleted.' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

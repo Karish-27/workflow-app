@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 const workerSchema = new mongoose.Schema(
   {
@@ -6,6 +7,12 @@ const workerSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+    },
+    organization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      required: true,
+      index: true,
     },
     name: {
       type: String,
@@ -55,11 +62,53 @@ const workerSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    photoUrl: { type: String, default: '' },
+
+    // Self-service login (PIN hashed with bcrypt)
+    pinHash: { type: String, default: null, select: false },
+    selfServiceEnabled: { type: Boolean, default: false },
+
+    // Default site & shift assignment
+    site: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Site',
+      default: null,
+    },
+    shift: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Shift',
+      default: null,
+    },
+
+    // Leave balance per type (resets yearly, simple counter for now)
+    leaveBalance: {
+      casual: { type: Number, default: 12 },
+      sick: { type: Number, default: 7 },
+      paid: { type: Number, default: 0 },
+    },
+
+    deletedAt: { type: Date, default: null, index: true },
   },
   { timestamps: true }
 );
 
-// Index for fast owner-based queries
+workerSchema.index({ organization: 1, status: 1, deletedAt: 1 });
 workerSchema.index({ owner: 1, status: 1 });
+workerSchema.index({ organization: 1, phone: 1 });
+
+workerSchema.methods.setPin = async function (pin) {
+  if (!pin) {
+    this.pinHash = null;
+    this.selfServiceEnabled = false;
+    return;
+  }
+  this.pinHash = await bcrypt.hash(String(pin), 10);
+  this.selfServiceEnabled = true;
+};
+
+workerSchema.methods.comparePin = async function (pin) {
+  if (!this.pinHash) return false;
+  return bcrypt.compare(String(pin), this.pinHash);
+};
 
 module.exports = mongoose.model('Worker', workerSchema);

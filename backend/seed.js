@@ -4,6 +4,14 @@ const User = require('./models/User');
 const Worker = require('./models/Worker');
 const Attendance = require('./models/Attendance');
 const Payment = require('./models/Payment');
+const Organization = require('./models/Organization');
+const Invite = require('./models/Invite');
+const AuditLog = require('./models/AuditLog');
+const Holiday = require('./models/Holiday');
+const Leave = require('./models/Leave');
+const Advance = require('./models/Advance');
+const Shift = require('./models/Shift');
+const Site = require('./models/Site');
 
 const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/workflow_db';
 
@@ -38,7 +46,7 @@ function randomStatus() {
 
 // ─── Helper: build attendance records for a given month ───────────────────────
 // Skips inactive workers. Generates one record per day per active worker.
-function buildAttendanceForMonth(workers, ownerId, year, month, totalDays) {
+function buildAttendanceForMonth(workers, ownerId, orgId, year, month, totalDays) {
   const records = [];
   for (const worker of workers) {
     if (worker.status === 'inactive') continue;
@@ -47,6 +55,7 @@ function buildAttendanceForMonth(workers, ownerId, year, month, totalDays) {
       records.push({
         worker:        worker._id,
         owner:         ownerId,
+        organization: orgId,
         date:          new Date(year, month, day),
         status,
         // ~20% chance of 2 overtime hours on present days
@@ -69,7 +78,7 @@ function calcGross(worker, presentDays, totalWorkingDays) {
 }
 
 // ─── Helper: build a single payment record for one worker for one period ──────
-function buildPayment(worker, ownerId, periodStart, periodEnd, presentDays, absentDays, halfDays, leaveDays, totalWorkingDays, method, paidDate, txnRef, notes) {
+function buildPayment(worker, ownerId, orgId, periodStart, periodEnd, presentDays, absentDays, halfDays, leaveDays, totalWorkingDays, method, paidDate, txnRef, notes) {
   const gross      = calcGross(worker, presentDays, totalWorkingDays);
   // Deduction: 1 absent day worth of wage (daily) or prorated (monthly)
   const deduction  = absentDays * (worker.wageType === 'daily' ? worker.wage : Math.round(worker.wage / totalWorkingDays));
@@ -79,6 +88,8 @@ function buildPayment(worker, ownerId, periodStart, periodEnd, presentDays, abse
   return {
     worker:           worker._id,
     owner:            ownerId,
+    organization:     orgId,
+    createdBy:        ownerId,
     periodStart,
     periodEnd,
     totalWorkingDays,
@@ -112,6 +123,14 @@ async function seed() {
     Worker.deleteMany({}),
     Attendance.deleteMany({}),
     Payment.deleteMany({}),
+    Organization.deleteMany({}),
+    Invite.deleteMany({}),
+    AuditLog.deleteMany({}),
+    Holiday.deleteMany({}),
+    Leave.deleteMany({}),
+    Advance.deleteMany({}),
+    Shift.deleteMany({}),
+    Site.deleteMany({}),
   ]);
   console.log('Cleared existing collections');
 
@@ -123,26 +142,128 @@ async function seed() {
     businessName: 'Kumar Construction',
     phone:        '9988776655',
     role:         'admin',
+    isOwner:      true,
+    emailVerified: true,
   });
   console.log('Created demo user:', user.email);
 
-  // 4. Insert all workers linked to the demo user
+  // 3b. Create their organization and link it back to the user
+  const organization = await Organization.create({
+    name:      'Kumar Construction',
+    slug:      'kumar-construction',
+    owner:     user._id,
+    phone:     '9988776655',
+    country:   'IN',
+    currency:  'INR',
+    timezone:  'Asia/Kolkata',
+    plan:      'free',
+    seatLimit: 3,
+    workerLimit: 25,
+    trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+  });
+  user.organization = organization._id;
+  await user.save();
+  console.log('Created organization:', organization.name);
+
+  // 4. Insert all workers linked to the demo user + organization
   const workers = await Worker.insertMany(
     workerData.map((w) => ({
       ...w,
-      owner:       user._id,
-      joiningDate: new Date('2024-01-15'),
-      status:      w.status || 'active',
+      owner:        user._id,
+      organization: organization._id,
+      joiningDate:  new Date('2024-01-15'),
+      status:       w.status || 'active',
       overtimeRate: w.wageType === 'daily' ? Math.round(w.wage / 8) : 0, // hourly OT rate
     }))
   );
   console.log(`Created ${workers.length} workers`);
 
+  // 4b. Sample shifts
+  const [morningShift, generalShift] = await Shift.insertMany([
+    {
+      organization: organization._id,
+      name: 'Morning (9–6)',
+      startTime: '09:00',
+      endTime: '18:00',
+      breakMinutes: 60,
+      lateAfterMinutes: 15,
+      overtimeAfterMinutes: 30,
+      weeklyOffs: [0],
+      isDefault: true,
+      color: '#FF5C3A',
+    },
+    {
+      organization: organization._id,
+      name: 'General (10–7)',
+      startTime: '10:00',
+      endTime: '19:00',
+      breakMinutes: 60,
+      lateAfterMinutes: 15,
+      overtimeAfterMinutes: 30,
+      weeklyOffs: [0],
+      color: '#3B82F6',
+    },
+  ]);
+
+  // 4c. Sample sites (Pune coords as defaults — replace with your own)
+  const [siteAlpha, siteBeta] = await Site.insertMany([
+    {
+      organization: organization._id,
+      name: 'Site A — Hadapsar',
+      address: 'Hadapsar, Pune',
+      lat: 18.5089,
+      lng: 73.9259,
+      radiusMeters: 150,
+      geofenceEnabled: true,
+    },
+    {
+      organization: organization._id,
+      name: 'Site B — Wakad',
+      address: 'Wakad, Pune',
+      lat: 18.5969,
+      lng: 73.7626,
+      radiusMeters: 150,
+      geofenceEnabled: true,
+    },
+  ]);
+
+  // 4d. Sample holidays for 2026
+  await Holiday.insertMany([
+    { organization: organization._id, name: 'Republic Day', date: new Date(2026, 0, 26), paid: true },
+    { organization: organization._id, name: 'Holi', date: new Date(2026, 2, 5), paid: true },
+    { organization: organization._id, name: 'Independence Day', date: new Date(2026, 7, 15), paid: true },
+    { organization: organization._id, name: 'Gandhi Jayanti', date: new Date(2026, 9, 2), paid: true },
+    { organization: organization._id, name: 'Diwali', date: new Date(2026, 10, 7), paid: true },
+  ]);
+
+  // 4e. Assign first 4 workers to shifts/sites + enable self-service with PIN "1234"
+  for (let i = 0; i < Math.min(4, workers.length); i++) {
+    const w = workers[i];
+    w.shift = i % 2 === 0 ? morningShift._id : generalShift._id;
+    w.site = i % 2 === 0 ? siteAlpha._id : siteBeta._id;
+    await w.setPin('1234');
+    await w.save();
+  }
+  console.log('Enabled self-service for 4 workers (PIN: 1234)');
+
+  // 4f. One sample advance to first worker
+  if (workers[0]) {
+    await Advance.create({
+      organization: organization._id,
+      worker: workers[0]._id,
+      amount: 5000,
+      reason: 'Medical emergency',
+      issuedOn: new Date(2026, 1, 10),
+      issuedBy: user._id,
+      installmentAmount: 1000,
+    });
+  }
+
   // 5. Generate attendance for January, February, and March 2026
   //    January: 26 working days, February: 24, March days 1-15 (15 days so far)
-  const attJan = buildAttendanceForMonth(workers, user._id, 2026, 0, 26); // Jan
-  const attFeb = buildAttendanceForMonth(workers, user._id, 2026, 1, 24); // Feb
-  const attMar = buildAttendanceForMonth(workers, user._id, 2026, 2, 15); // Mar (partial)
+  const attJan = buildAttendanceForMonth(workers, user._id, organization._id, 2026, 0, 26); // Jan
+  const attFeb = buildAttendanceForMonth(workers, user._id, organization._id, 2026, 1, 24); // Feb
+  const attMar = buildAttendanceForMonth(workers, user._id, organization._id, 2026, 2, 15); // Mar (partial)
 
   await Attendance.insertMany([...attJan, ...attFeb, ...attMar]);
   console.log(`Created ${attJan.length + attFeb.length + attMar.length} attendance records`);
@@ -179,7 +300,7 @@ async function seed() {
 
     // ── January 2026 payment (full month, paid on 31 Jan) ──
     paymentsToInsert.push(buildPayment(
-      worker, user._id,
+      worker, user._id, organization._id,
       new Date(2026, 0, 1),   // period start: 1 Jan
       new Date(2026, 0, 31),  // period end:   31 Jan
       22, 2, 1, 1,            // present, absent, half, leave
@@ -192,7 +313,7 @@ async function seed() {
 
     // ── February 2026 payment (full month, paid on 28 Feb) ──
     paymentsToInsert.push(buildPayment(
-      worker, user._id,
+      worker, user._id, organization._id,
       new Date(2026, 1, 1),   // period start: 1 Feb
       new Date(2026, 1, 28),  // period end:   28 Feb
       21, 2, 1, 0,            // present, absent, half, leave
@@ -207,7 +328,7 @@ async function seed() {
     // Only daily-wage workers get a mid-month advance; monthly-wage get full on month end.
     if (worker.wageType === 'daily') {
       paymentsToInsert.push(buildPayment(
-        worker, user._id,
+        worker, user._id, organization._id,
         new Date(2026, 2, 1),   // period start: 1 Mar
         new Date(2026, 2, 15),  // period end:   15 Mar
         12, 2, 1, 0,            // present, absent, half, leave (partial fortnight)

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import AppShell from '../../components/layout/AppShell';
 import { Avatar, Modal, EmptyState, PageHeader } from '../../components/ui';
-import { workersApi } from '../../lib/api';
+import { workersApi, exportsApi } from '../../lib/api';
 import { formatCurrency, formatDate, ROLES, getWorkerColor } from '../../lib/utils';
 import { Worker, WorkerFormData } from '../../types';
 import Link from 'next/link';
@@ -79,6 +79,7 @@ export default function WorkersPage() {
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
+          <button className="btn" onClick={() => exportsApi.workers()} style={{ fontSize: 13 }}>Export CSV</button>
           <button className="btn btn-primary" onClick={openAdd}>+ Add Worker</button>
         </PageHeader>
 

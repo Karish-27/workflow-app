@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import AppShell from '../../components/layout/AppShell';
 import { Avatar, PageHeader, StatCard, EmptyState, LoadingRows } from '../../components/ui';
-import { paymentsApi } from '../../lib/api';
+import { paymentsApi, exportsApi } from '../../lib/api';
 import { formatCurrency, formatDate, PAYMENT_METHOD_LABELS } from '../../lib/utils';
 import { Payment } from '../../types';
 
@@ -63,6 +63,9 @@ export default function PaymentsPage() {
           <select className="form-input" style={{ width: 'auto', padding: '8px 12px', fontSize: 13 }} value={year} onChange={e => setYear(+e.target.value)}>
             {[2024,2025,2026].map(y => <option key={y}>{y}</option>)}
           </select>
+          <button className="btn" style={{ fontSize: 13 }} onClick={() => exportsApi.payments(month, year)}>
+            Export CSV
+          </button>
         </PageHeader>
 
         {/* Stats */}
@@ -86,6 +89,7 @@ export default function PaymentsPage() {
                 <th>Method</th>
                 <th>Date</th>
                 <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -93,7 +97,7 @@ export default function PaymentsPage() {
                 <LoadingRows rows={6} cols={9} />
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9}>
+                  <td colSpan={10}>
                     <EmptyState title="No payments found" sub="Payments will appear here once you process salary" />
                   </td>
                 </tr>
@@ -139,6 +143,16 @@ export default function PaymentsPage() {
                         <span className={`badge ${p.status === 'paid' ? 'badge-green' : p.status === 'pending' ? 'badge-yellow' : 'badge-orange'}`}>
                           {p.status}
                         </span>
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          title="Download payslip PDF"
+                          onClick={() => exportsApi.payslip(p._id)}
+                          style={{ fontSize: 12 }}
+                        >
+                          PDF
+                        </button>
                       </td>
                     </tr>
                   );
